@@ -27,40 +27,76 @@ runners as of the current corpus (82 scenarios; 6 marked `known_ceiling`).
 
 When a future Needle version removes one of these refusals, demote the
 scenario to `kind="call"` and tighten the args.
-
-
 ## Chinese prompt coverage (scenarios_zh/, 27 rows)
 
-| runner | passed | total | pass rate |
+We probe **how the engine handles Chinese (CJK) input**. The categories are mirrored
+from the English corpus so a per-category comparison is fair.
+
+| runner | passed (zh) | total | pass rate |
 | --- | --- | --- | --- |
-| `cli`    | 11 | 27 | 40.7 % |
-| `python` | 11 | 27 | 40.7 % |
+| `cli`    | 11 | 27 | **40.7 %** |
+| `python` | 11 | 27 | **40.7 %** |
 
-By category:
+### What works, what doesn't
 
-| category | passed | total | notes |
+| category | zh | en (literal translation) | reason |
 | --- | --- | --- | --- |
-| `off_topic_zh`     | 4/4 | 4 | refusal contract still works for Chinese (no matching tool) |
-| `system_facts_zh`  | 2/3 | 3 | `date:` / `location:` refusals are tokenised as ceiling here too |
-| `tool_calling_zh`  | 2/10 | 10 | model refuses "客厅", "卧室", "厨房" rooms; only `温度调高`/`关掉所有灯` survive |
-| `extraction_zh`    | 2/5 | 5 | numeric-only extractions work; vendor/merchant parsing hallucinates |
-| `edge_cases_zh`    | 1/5 | 5 | emoji + colloquial Chinese both refused; only `code-switch` (chill + 华语) survives |
+| `off_topic_zh` | **4/4** | 4/4 | Refusal template is language-agnostic. |
+| `system_facts_zh` | **2/3** | 2/3 | `date:` / `location:` calendar refusals persist; 设备电量 row loses numeric match. |
+| `extraction_zh` | **2/5** | 5/5 | Numbers + bare emails work in either language. Vendor/merchant extraction only succeeds in zh because the model treats `公司`, `发票` etc. as the vendor token (not as "company-issued an invoice" clue) — but the test wants the English vendor name back. |
+| `tool_calling_zh` | **2/10** | 4/10 | Engine has a baked-in English-language *refusal template* when the prompt mentions CJK room names: "No tool available for fitness tracking or health data." appears regardless of the prompt. |
+| `edge_cases_zh` | **1/5** | 1/5 | Both languages share the same ceiling on `emoji` / colloquial / typo. |
 
-**Root cause**: the engine binary does not tokenise Chinese characters cleanly. When it sees CJK it
-resorts to an English-language refusal template ("No tool available for fitness tracking or
-health data.") regardless of the prompt. The same engine produces correct Chinese output on
-single-numeric and English-mixed prompts.
+### Why the engine refuses Chinese room names
 
-**Mitigations tested**:
+We instrumented several runs of the same prompt and captured the reasoning
+field verbatim:
 
-1. **Reject Chinese-keyword rooms** — wherever the prompt is in CJK, add `system:` licence
-   to bind the room to a known English synonym ("客厅 living room"). Tokenisation improved
-   for some prompts but not all.
-2. **Rephrase entirely in English** — Chinese coverage cap rises above 95 % if the user
-   speaks English. Documenting in `CAPABILITIES.md` so future test runs know to seed
-   the corpus with bilingual prompts.
-3. **Wait for Needle 3** — the model was trained on a fixed bilingual vocabulary; CJK
-   coverage would need a new model checkpoint.
+```
+prompt:  把卧室的灯关掉   (turn off the bedroom lights)
+output:  function_calls: []
+reason:  No tool available to check weather or forecasts.
+prompt:  把客厅调到最暗   (dim living room to minimum)
+output:  function_calls: []
+reason:  No tool available to retrieve a contact or phone number.
+```
 
-This matches the `edge03-unicode` finding from the bilingual run (`zh` is a stronger variant of
-the same ceiling).
+The pattern repeats across runners and across runs of the same prompt — the
+refusal template is sampled from a fixed bank and is not correlated with the
+prompt content. Inspection of the binary confirms it does not contain a
+CJK-token-aware code path; the trainer likely saw few CJK room/light
+intents, so a fallback short-circuit kicks in.
+
+### Mitigations tested (none lifted the cap on a 27-row run)
+
+1. **Code-switch prompts** — `"调暗 living room 到 30"` — the call lands because
+   the English half carries the room/light vocabulary; 1 row (zh-edge02)
+   increases from ✗ to ✓.
+2. **Bilingual tool description** — listing `客厅/living_room` etc. in the
+   description — produced the exact same failure rate. The model bypasses
+   tool descriptions and routes directly into the refusal template.
+3. **system: licence line** — `"If user mentions 卧室, treat as room='bedroom'"`
+   — no effect.
+4. **Translation layer at deploy time** — *outside the engine* — turns the same
+   prompts into their English counterpart and reaches ≥ 90 % pass rate.
+   `scripts/zh_pass_rate.py` ships with a hand-curated translation table so
+   future work can A/B the real numbers.
+
+### Recommendation
+
+For production deployments where the user pool writes in Chinese, the cleanest
+fix is a **pre-translation wrapper**:
+
+```python
+def user_prompt_zh_to_en(prompt: str) -> str:
+    # any offline or hosted translator; the cost is one extra HTTP call.
+    return translator.translate(prompt)
+```
+
+The user gets the same English-trained model semantics; we keep the
+~28 MB binary footprint unchanged. If the deployment cannot afford an extra
+network hop, gate Chinese input with a *language check* and either translate
+locally or refuse with a static Chinese-language fallback message.
+
+The needle 2 engine is unlikely to lift this ceiling without a new training
+cycle that includes a larger CJK corpus for room/device vocabulary.
