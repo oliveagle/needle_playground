@@ -70,153 +70,170 @@ python scripts/build_scenarios_doc.py
 
 ---
 
-## conversational — 5 scenarios
+## tool_calling — 22 scenarios
 
-Two-turn exchanges to confirm the session keeps tool schemas loaded after a `complete()` and that follow-ups re-target the right tool.
+Probes the **canonical happy path**: a single declared tool, a direct prompt, an expected call with subset args. Includes multi-tool dispatch, enum constraints, negation, i18n, numeric edges, and the two refusals the engine hard-codes (calendar / multi-room).
 
 ### Scenarios
 
-#### `conv01-keep-tools-after-run` · severity=`regression`
+#### `tc01-dim-living-room` · severity=`smoke`
 
 - **Tools declared**: `set_lights`  
-- **Prompt**: `first turn: bedroom on at 50`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "bedroom", "brightness": 50, "on": true}`, min_confidence=`0.3`.  
-- **Followup turn**: `living room off` with expect=`call`  
-- **Tags**: `reset`, `session`  
+- **Prompt**: `dim the living room to 30`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "living room", "brightness": 30, "on": true}`, min_confidence=`0.5`.  
+- **Tags**: `lights`  
 
-#### `conv02-pivot-after-result` · severity=`edge`
+#### `tc02-bedroom-on-full` · severity=`regression`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `turn the bedroom lights on full`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "bedroom", "on": true, "brightness": 100}`, min_confidence=`0.5`.  
+- **Tags**: `lights`  
+
+#### `tc03-kitchen-off` · severity=`smoke`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `kill the kitchen lights`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "kitchen", "on": false}`, min_confidence=`0.0`.  
+- **Tags**: `lights`  
+
+#### `tc04-bright-default-room` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `make it brighter in here`  
+- **Expect**: a single `call` matching name=`set_lights`.  
+- **Tags**: `lights`, `ambiguous`  
+
+#### `tc05-multi-tool-music-then-msg` · severity=`regression`
 
 - **Tools declared**: `play_music`, `send_message`  
-- **Prompt**: `queue some bossa nova`  
-- **Expect**: a single `call` matching name=`play_music`, args=`{"query": "bossa nova"}`.  
-- **Followup turn**: `actually message Sam that rain check on dinner` with expect=`call`  
-- **Tags**: `pivot`  
+- **Prompt**: `play some chill jazz and text Alex that I'm heading out`  
+- **System turn**: `Plan every action the user requests in one turn; emit one function call per intent.`  
+- **Expect**: a single `call` matching name=`play_music`, args=`{"query": "chill jazz"}`, min_confidence=`0.05`.  
+- **Tags**: `multi`, `dispatch`  
 
-#### `conv03-acknowledge-no-call` · severity=`edge`
+#### `tc06-multi-tool-second-turn` · severity=`regression`
 
-- **Tools declared**: `set_lights`  
-- **Prompt**: `thanks`  
-- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
-- **Tags**: `ack`  
+- **Tools declared**: `set_lights`, `play_music`  
+- **Prompt**: `set the lounge to 60, then queue some lo-fi`  
+- **System turn**: `Plan every action the user requests in one turn; emit one function call per intent.`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "lounge", "brightness": 60, "on": true}`, min_confidence=`0.05`.  
+- **Tags**: `multi`, `loop`  
 
-#### `conv04-multi-turn-sequence` · severity=`regression`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `first: bedroom to 50`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "bedroom", "brightness": 50, "on": true}`, min_confidence=`0.0`.  
-- **Followup turn**: `now the kitchen to 80` with expect=`call`  
-- **Tags**: `multi_turn`  
-
-#### `conv05-ack-then-act` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `ok thanks`  
-- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
-- **Tags**: `ack`  
-
-## edge_cases — 14 scenarios
-
-**Stress around the edges**: empty / very long / unicode / emoji / spelling / numerics-as-words / quoting / mixed casing / code-switch.
-
-### Scenarios
-
-#### `edge01-empty-prompt` · severity=`edge`
-
-- **Prompt**: ``  
-- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
-- **Tags**: `degenerate`  
-
-#### `edge02-very-long-prompt` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello please dim the living room to 20`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "living room", "brightness": 20, "on": true}`, min_confidence=`0.0`.  
-- **Tags**: `stress`, `length`  
-
-#### `edge03-unicode` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `关掉客厅的灯`  
-- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
-- **Tags**: `unicode`, `known_weakness`  
-- **Note**: Engine refuses Chinese-to-lights mapping despite descriptive schema; tracked as a model weakness rather than a regression test failure.  
-
-#### `edge04-special-chars` · severity=`edge`
-
-- **Tools declared**: `note`  
-- **Prompt**: `remember: <script>alert('x')</script>`  
-- **Expect**: a single `call` matching name=`note`, min_confidence=`0.0`.  
-- **Tags**: `symbols`  
-
-#### `edge05-multi-intent` · severity=`edge`
-
-- **Tools declared**: `set_lights`, `play_music`, `send_message`  
-- **Prompt**: `turn the kitchen on, play jazz, and text Lee 'on my way'`  
-- **Expect**: a single `call` matching by name only.  
-- **Tags**: `multi`  
-
-#### `edge06-floats-vs-ints` · severity=`edge`
+#### `tc07-thermostat-with-enum` · severity=`regression`
 
 - **Tools declared**: `set_thermostat`  
-- **Prompt**: `set thermostat to 21.5`  
-- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 21.5}`, min_confidence=`0.3`.  
-- **Tags**: `types`  
+- **Prompt**: `cool the room down to 21`  
+- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 21, "mode": "cool"}`, min_confidence=`0.4`.  
+- **Tags**: `enum`, `constraints`  
 
-#### `edge07-only-emoji` · severity=`edge`
+#### `tc08-thermostat-omit-arg` · severity=`edge`
 
-- **Tools declared**: `set_lights`  
-- **Prompt**: `💡 living room please`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "living room", "on": true}`, min_confidence=`0.0`.  
-- **Tags**: `emoji`  
+- **Tools declared**: `set_thermostat`  
+- **Prompt**: `set temperature to 22`  
+- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 22}`, min_confidence=`0.4`.  
+- **Tags**: `enum`, `omitted`  
 
-#### `edge08-trailing-whitespace` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `   bedroom on   `  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "bedroom", "on": true}`, min_confidence=`0.0`.  
-- **Tags**: `whitespace`  
-
-#### `edge09-quoted-string` · severity=`edge`
-
-- **Tools declared**: `note`  
-- **Prompt**: `save: "don't forget"`  
-- **Expect**: a single `call` matching name=`note`, min_confidence=`0.0`.  
-- **Tags**: `quoting`  
-
-#### `edge10-multi-byte` · severity=`edge`
-
-- **Tools declared**: `note`  
-- **Prompt**: `记住: café latté with résumé`  
-- **Expect**: a single `call` matching name=`note`, min_confidence=`0.0`.  
-- **Tags**: `unicode`  
-
-#### `edge11-typo` · severity=`edge`
+#### `tc09-negative-on` · severity=`edge`
 
 - **Tools declared**: `set_lights`  
-- **Prompt**: `tunr off the lihgts in the bathrom`  
+- **Prompt**: `leave the office lights off`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "office", "on": false}`, min_confidence=`0.05`.  
+- **Tags**: `negation`, `lights`  
+
+#### `tc10-conversational-reset` · severity=`regression`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `ignore that, now turn the study on`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "study", "on": true}`, min_confidence=`0.3`.  
+- **Tags**: `reset`, `session`  
+
+#### `tc11-spanish-prompt` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `apaga la luz del salón`  
 - **Expect**: a single `call` matching name=`set_lights`, args=`{"on": false}`, min_confidence=`0.0`.  
-- **Tags**: `typo`  
+- **Tags**: `i18n`  
 
-#### `edge12-numbers-as-words` · severity=`edge`
+#### `tc12-numeric-arg-edge` · severity=`edge`
 
 - **Tools declared**: `set_thermostat`  
-- **Prompt**: `set it to nineteen`  
-- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 19}`, min_confidence=`0.0`.  
+- **Prompt**: `set it to twenty-two please`  
+- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 22}`, min_confidence=`0.0`.  
 - **Tags**: `numbers`  
 
-#### `edge13-mixed-case` · severity=`edge`
+#### `tc13-default-room` · severity=`smoke`
 
 - **Tools declared**: `set_lights`  
-- **Prompt**: `Living Room On`  
+- **Prompt**: `turn on the lights`  
 - **Expect**: a single `call` matching name=`set_lights`, args=`{"on": true}`, min_confidence=`0.0`.  
-- **Tags**: `casing`  
+- **Tags**: `lights`, `implicit`  
 
-#### `edge14-code-switch` · severity=`edge`
+#### `tc14-metered-brightness` · severity=`regression`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `set the bedroom to half brightness`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"brightness": 50}`, min_confidence=`0.0`.  
+- **Tags**: `lights`, `numbers`  
+
+#### `tc15-imperative` · severity=`smoke`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `lights off in the study`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "study", "on": false}`, min_confidence=`0.0`.  
+- **Tags**: `lights`  
+
+#### `tc16-schedule-style` · severity=`edge`
+
+- **Tools declared**: `calendar_event`  
+- **Prompt**: `schedule a sync with the team tomorrow at 7pm`  
+- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
+- **Tags**: `calendar`, `known_ceiling`  
+- **Note**: Engine bakes refusal for calendar prompts; logged as ceiling, passes via any-shape.  
+
+#### `tc17-lo-fi-bump` · severity=`regression`
 
 - **Tools declared**: `play_music`  
-- **Prompt**: `put on 一些 chill 音乐`  
+- **Prompt**: `queue some lo-fi to focus`  
 - **Expect**: a single `call` matching name=`play_music`, min_confidence=`0.0`.  
-- **Tags**: `i18n`, `code-switch`  
+- **Tags**: `music`  
+
+#### `tc18-quick-msg` · severity=`regression`
+
+- **Tools declared**: `send_message`  
+- **Prompt**: `text Sam: 'pick up milk on the way home'`  
+- **Expect**: a single `call` matching name=`send_message`, min_confidence=`0.0`.  
+- **Tags**: `messages`  
+
+#### `tc19-multi-intent-compound` · severity=`edge`
+
+- **Tools declared**: `set_lights`, `play_music`, `send_message`  
+- **Prompt**: `turn the kitchen light on, and queue chillhop`  
+- **System turn**: `Plan every action the user requests in one turn; emit one function call per intent.`  
+- **Expect**: a single `call` matching min_confidence=`0.0`.  
+- **Tags**: `multi`, `compound`  
+
+#### `tc20-punctuation` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `bedroom light: ON!`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"on": true}`, min_confidence=`0.0`.  
+- **Tags**: `punctuation`  
+
+#### `tc21-spaces` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `set guest bedroom lights to on`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "guest bedroom", "on": true}`, min_confidence=`0.0`.  
+- **Tags**: `variability`  
+
+#### `tc22-multi-rooms` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `turn off all the lights`  
+- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
+- **Tags**: `multi`  
+- **Note**: Engine can't iterate over multiple rooms in one call; the scenario's expectation is to accept any-shape.  
 
 ## extraction — 12 scenarios
 
@@ -452,39 +469,153 @@ Same engine, **colloquial phrasing**: please / would-you-mind / "yo" / prose num
 - **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 23}`, min_confidence=`0.0`.  
 - **Tags**: `numbers`  
 
-## stress — 4 scenarios
+## edge_cases — 14 scenarios
 
-6-tool catalogue so the **retrieval head** engages (per the README, above five tools invokes retrieval and renders only the top-5). Verifies the engine still picks the right tool when the catalogue is wider than the schema.
+**Stress around the edges**: empty / very long / unicode / emoji / spelling / numerics-as-words / quoting / mixed casing / code-switch.
 
 ### Scenarios
 
-#### `stress01-large-catalogue-ok-pick` · severity=`smoke`
+#### `edge01-empty-prompt` · severity=`edge`
 
-- **Tools declared**: `k1`, `k2`, `b1`, `l1`, `m1`, `t1`  
-- **Prompt**: `turn on the bedroom light`  
-- **Expect**: a single `call` matching by name only.  
-- **Tags**: `retrieval`, `catalog`  
-
-#### `stress02-large-catalogue-off-topic` · severity=`regression`
-
-- **Tools declared**: `k1`, `k2`, `b1`, `l1`, `m1`, `t1`  
-- **Prompt**: `what's the weather in Tokyo?`  
+- **Prompt**: ``  
 - **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
-- **Tags**: `retrieval`, `catalog`  
+- **Tags**: `degenerate`  
 
-#### `stress03-large-catalogue-multi-intent` · severity=`edge`
+#### `edge02-very-long-prompt` · severity=`edge`
 
-- **Tools declared**: `k1`, `b1`, `l1`, `s1`, `m1`, `t1`, `n1`  
-- **Prompt**: `turn on the bedroom light and queue some jazz`  
-- **Expect**: a single `call` matching min_confidence=`0.0`.  
-- **Tags**: `retrieval`, `catalog`, `multi`  
+- **Tools declared**: `set_lights`  
+- **Prompt**: `hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello please dim the living room to 20`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "living room", "brightness": 20, "on": true}`, min_confidence=`0.0`.  
+- **Tags**: `stress`, `length`  
 
-#### `stress04-large-catalogue-deep-pick` · severity=`edge`
+#### `edge03-unicode` · severity=`edge`
 
-- **Tools declared**: `k1`, `b1`, `l1`, `s1`, `m1`, `t1`  
-- **Prompt**: `I'd like some strings, Bach, please`  
-- **Expect**: a single `call` matching name=`m1`, min_confidence=`0.0`.  
-- **Tags**: `retrieval`, `catalog`  
+- **Tools declared**: `set_lights`  
+- **Prompt**: `关掉客厅的灯`  
+- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
+- **Tags**: `unicode`, `known_weakness`  
+- **Note**: Engine refuses Chinese-to-lights mapping despite descriptive schema; tracked as a model weakness rather than a regression test failure.  
+
+#### `edge04-special-chars` · severity=`edge`
+
+- **Tools declared**: `note`  
+- **Prompt**: `remember: <script>alert('x')</script>`  
+- **Expect**: a single `call` matching name=`note`, min_confidence=`0.0`.  
+- **Tags**: `symbols`  
+
+#### `edge05-multi-intent` · severity=`edge`
+
+- **Tools declared**: `set_lights`, `play_music`, `send_message`  
+- **Prompt**: `turn the kitchen on, play jazz, and text Lee 'on my way'`  
+- **Expect**: a single `call` matching by name only.  
+- **Tags**: `multi`  
+
+#### `edge06-floats-vs-ints` · severity=`edge`
+
+- **Tools declared**: `set_thermostat`  
+- **Prompt**: `set thermostat to 21.5`  
+- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 21.5}`, min_confidence=`0.3`.  
+- **Tags**: `types`  
+
+#### `edge07-only-emoji` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `💡 living room please`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "living room", "on": true}`, min_confidence=`0.0`.  
+- **Tags**: `emoji`  
+
+#### `edge08-trailing-whitespace` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `   bedroom on   `  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "bedroom", "on": true}`, min_confidence=`0.0`.  
+- **Tags**: `whitespace`  
+
+#### `edge09-quoted-string` · severity=`edge`
+
+- **Tools declared**: `note`  
+- **Prompt**: `save: "don't forget"`  
+- **Expect**: a single `call` matching name=`note`, min_confidence=`0.0`.  
+- **Tags**: `quoting`  
+
+#### `edge10-multi-byte` · severity=`edge`
+
+- **Tools declared**: `note`  
+- **Prompt**: `记住: café latté with résumé`  
+- **Expect**: a single `call` matching name=`note`, min_confidence=`0.0`.  
+- **Tags**: `unicode`  
+
+#### `edge11-typo` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `tunr off the lihgts in the bathrom`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"on": false}`, min_confidence=`0.0`.  
+- **Tags**: `typo`  
+
+#### `edge12-numbers-as-words` · severity=`edge`
+
+- **Tools declared**: `set_thermostat`  
+- **Prompt**: `set it to nineteen`  
+- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 19}`, min_confidence=`0.0`.  
+- **Tags**: `numbers`  
+
+#### `edge13-mixed-case` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `Living Room On`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"on": true}`, min_confidence=`0.0`.  
+- **Tags**: `casing`  
+
+#### `edge14-code-switch` · severity=`edge`
+
+- **Tools declared**: `play_music`  
+- **Prompt**: `put on 一些 chill 音乐`  
+- **Expect**: a single `call` matching name=`play_music`, min_confidence=`0.0`.  
+- **Tags**: `i18n`, `code-switch`  
+
+## conversational — 5 scenarios
+
+Two-turn exchanges to confirm the session keeps tool schemas loaded after a `complete()` and that follow-ups re-target the right tool.
+
+### Scenarios
+
+#### `conv01-keep-tools-after-run` · severity=`regression`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `first turn: bedroom on at 50`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "bedroom", "brightness": 50, "on": true}`, min_confidence=`0.3`.  
+- **Followup turn**: `living room off` with expect=`call`  
+- **Tags**: `reset`, `session`  
+
+#### `conv02-pivot-after-result` · severity=`edge`
+
+- **Tools declared**: `play_music`, `send_message`  
+- **Prompt**: `queue some bossa nova`  
+- **Expect**: a single `call` matching name=`play_music`, args=`{"query": "bossa nova"}`.  
+- **Followup turn**: `actually message Sam that rain check on dinner` with expect=`call`  
+- **Tags**: `pivot`  
+
+#### `conv03-acknowledge-no-call` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `thanks`  
+- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
+- **Tags**: `ack`  
+
+#### `conv04-multi-turn-sequence` · severity=`regression`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `first: bedroom to 50`  
+- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "bedroom", "brightness": 50, "on": true}`, min_confidence=`0.0`.  
+- **Followup turn**: `now the kitchen to 80` with expect=`call`  
+- **Tags**: `multi_turn`  
+
+#### `conv05-ack-then-act` · severity=`edge`
+
+- **Tools declared**: `set_lights`  
+- **Prompt**: `ok thanks`  
+- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
+- **Tags**: `ack`  
 
 ## system_facts — 7 scenarios
 
@@ -550,168 +681,37 @@ Sends a `system:` turn with `date:`, `device:`, `location:` facts and checks whe
 - **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
 - **Tags**: `no_fact`  
 
-## tool_calling — 22 scenarios
+## stress — 4 scenarios
 
-Probes the **canonical happy path**: a single declared tool, a direct prompt, an expected call with subset args. Includes multi-tool dispatch, enum constraints, negation, i18n, numeric edges, and the two refusals the engine hard-codes (calendar / multi-room).
+6-tool catalogue so the **retrieval head** engages (per the README, above five tools invokes retrieval and renders only the top-5). Verifies the engine still picks the right tool when the catalogue is wider than the schema.
 
 ### Scenarios
 
-#### `tc01-dim-living-room` · severity=`smoke`
+#### `stress01-large-catalogue-ok-pick` · severity=`smoke`
 
-- **Tools declared**: `set_lights`  
-- **Prompt**: `dim the living room to 30`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "living room", "brightness": 30, "on": true}`, min_confidence=`0.5`.  
-- **Tags**: `lights`  
+- **Tools declared**: `k1`, `k2`, `b1`, `l1`, `m1`, `t1`  
+- **Prompt**: `turn on the bedroom light`  
+- **Expect**: a single `call` matching by name only.  
+- **Tags**: `retrieval`, `catalog`  
 
-#### `tc02-bedroom-on-full` · severity=`regression`
+#### `stress02-large-catalogue-off-topic` · severity=`regression`
 
-- **Tools declared**: `set_lights`  
-- **Prompt**: `turn the bedroom lights on full`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "bedroom", "on": true, "brightness": 100}`, min_confidence=`0.5`.  
-- **Tags**: `lights`  
-
-#### `tc03-kitchen-off` · severity=`smoke`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `kill the kitchen lights`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "kitchen", "on": false}`, min_confidence=`0.0`.  
-- **Tags**: `lights`  
-
-#### `tc04-bright-default-room` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `make it brighter in here`  
-- **Expect**: a single `call` matching name=`set_lights`.  
-- **Tags**: `lights`, `ambiguous`  
-
-#### `tc05-multi-tool-music-then-msg` · severity=`regression`
-
-- **Tools declared**: `play_music`, `send_message`  
-- **Prompt**: `play some chill jazz and text Alex that I'm heading out`  
-- **System turn**: `Plan every action the user requests in one turn; emit one function call per intent.`  
-- **Expect**: a single `call` matching name=`play_music`, args=`{"query": "chill jazz"}`, min_confidence=`0.05`.  
-- **Tags**: `multi`, `dispatch`  
-
-#### `tc06-multi-tool-second-turn` · severity=`regression`
-
-- **Tools declared**: `set_lights`, `play_music`  
-- **Prompt**: `set the lounge to 60, then queue some lo-fi`  
-- **System turn**: `Plan every action the user requests in one turn; emit one function call per intent.`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "lounge", "brightness": 60, "on": true}`, min_confidence=`0.05`.  
-- **Tags**: `multi`, `loop`  
-
-#### `tc07-thermostat-with-enum` · severity=`regression`
-
-- **Tools declared**: `set_thermostat`  
-- **Prompt**: `cool the room down to 21`  
-- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 21, "mode": "cool"}`, min_confidence=`0.4`.  
-- **Tags**: `enum`, `constraints`  
-
-#### `tc08-thermostat-omit-arg` · severity=`edge`
-
-- **Tools declared**: `set_thermostat`  
-- **Prompt**: `set temperature to 22`  
-- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 22}`, min_confidence=`0.4`.  
-- **Tags**: `enum`, `omitted`  
-
-#### `tc09-negative-on` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `leave the office lights off`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "office", "on": false}`, min_confidence=`0.05`.  
-- **Tags**: `negation`, `lights`  
-
-#### `tc10-conversational-reset` · severity=`regression`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `ignore that, now turn the study on`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "study", "on": true}`, min_confidence=`0.3`.  
-- **Tags**: `reset`, `session`  
-
-#### `tc11-spanish-prompt` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `apaga la luz del salón`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"on": false}`, min_confidence=`0.0`.  
-- **Tags**: `i18n`  
-
-#### `tc12-numeric-arg-edge` · severity=`edge`
-
-- **Tools declared**: `set_thermostat`  
-- **Prompt**: `set it to twenty-two please`  
-- **Expect**: a single `call` matching name=`set_thermostat`, args=`{"temperature": 22}`, min_confidence=`0.0`.  
-- **Tags**: `numbers`  
-
-#### `tc13-default-room` · severity=`smoke`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `turn on the lights`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"on": true}`, min_confidence=`0.0`.  
-- **Tags**: `lights`, `implicit`  
-
-#### `tc14-metered-brightness` · severity=`regression`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `set the bedroom to half brightness`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"brightness": 50}`, min_confidence=`0.0`.  
-- **Tags**: `lights`, `numbers`  
-
-#### `tc15-imperative` · severity=`smoke`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `lights off in the study`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "study", "on": false}`, min_confidence=`0.0`.  
-- **Tags**: `lights`  
-
-#### `tc16-schedule-style` · severity=`edge`
-
-- **Tools declared**: `calendar_event`  
-- **Prompt**: `schedule a sync with the team tomorrow at 7pm`  
+- **Tools declared**: `k1`, `k2`, `b1`, `l1`, `m1`, `t1`  
+- **Prompt**: `what's the weather in Tokyo?`  
 - **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
-- **Tags**: `calendar`, `known_ceiling`  
-- **Note**: Engine bakes refusal for calendar prompts; logged as ceiling, passes via any-shape.  
+- **Tags**: `retrieval`, `catalog`  
 
-#### `tc17-lo-fi-bump` · severity=`regression`
+#### `stress03-large-catalogue-multi-intent` · severity=`edge`
 
-- **Tools declared**: `play_music`  
-- **Prompt**: `queue some lo-fi to focus`  
-- **Expect**: a single `call` matching name=`play_music`, min_confidence=`0.0`.  
-- **Tags**: `music`  
-
-#### `tc18-quick-msg` · severity=`regression`
-
-- **Tools declared**: `send_message`  
-- **Prompt**: `text Sam: 'pick up milk on the way home'`  
-- **Expect**: a single `call` matching name=`send_message`, min_confidence=`0.0`.  
-- **Tags**: `messages`  
-
-#### `tc19-multi-intent-compound` · severity=`edge`
-
-- **Tools declared**: `set_lights`, `play_music`, `send_message`  
-- **Prompt**: `turn the kitchen light on, and queue chillhop`  
-- **System turn**: `Plan every action the user requests in one turn; emit one function call per intent.`  
+- **Tools declared**: `k1`, `b1`, `l1`, `s1`, `m1`, `t1`, `n1`  
+- **Prompt**: `turn on the bedroom light and queue some jazz`  
 - **Expect**: a single `call` matching min_confidence=`0.0`.  
-- **Tags**: `multi`, `compound`  
+- **Tags**: `retrieval`, `catalog`, `multi`  
 
-#### `tc20-punctuation` · severity=`edge`
+#### `stress04-large-catalogue-deep-pick` · severity=`edge`
 
-- **Tools declared**: `set_lights`  
-- **Prompt**: `bedroom light: ON!`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"on": true}`, min_confidence=`0.0`.  
-- **Tags**: `punctuation`  
-
-#### `tc21-spaces` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `set guest bedroom lights to on`  
-- **Expect**: a single `call` matching name=`set_lights`, args=`{"room": "guest bedroom", "on": true}`, min_confidence=`0.0`.  
-- **Tags**: `variability`  
-
-#### `tc22-multi-rooms` · severity=`edge`
-
-- **Tools declared**: `set_lights`  
-- **Prompt**: `turn off all the lights`  
-- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  
-- **Tags**: `multi`  
-- **Note**: Engine can't iterate over multiple rooms in one call; the scenario's expectation is to accept any-shape.  
+- **Tools declared**: `k1`, `b1`, `l1`, `s1`, `m1`, `t1`  
+- **Prompt**: `I'd like some strings, Bach, please`  
+- **Expect**: a single `call` matching name=`m1`, min_confidence=`0.0`.  
+- **Tags**: `retrieval`, `catalog`  
 

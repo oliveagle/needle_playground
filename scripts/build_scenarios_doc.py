@@ -142,7 +142,10 @@ python scripts/build_scenarios_doc.py
 ---
 
 """
-    body = "\n".join(render_category(p) for p in sorted(SCENARIOS_DIR.glob("*.jsonl")))
+    order = ["tool_calling", "extraction", "off_topic", "qualitative",
+            "edge_cases", "conversational", "system_facts", "stress"]
+    paths = {p.stem: p for p in SCENARIOS_DIR.glob("*.jsonl")}
+    body = "\n".join(render_category(paths[k]) for k in order if k in paths)
     OUT.write_text(header + body + "\n")
     print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size} bytes)")
 
