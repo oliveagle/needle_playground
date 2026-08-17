@@ -1,6 +1,7 @@
-"""Regenerate SCENARIOS.md from `scenarios/*.jsonl`.
+"""Regenerate SCENARIOS.md (中文) from `scenarios/*.jsonl`.
 
-Run after editing any scenario to keep the reader in sync.
+English copy is published as `SCENARIOS.en.md`; the script intentionally
+emits the Chinese version as `SCENARIOS.md` per the user's request.
 """
 from __future__ import annotations
 
@@ -12,141 +13,133 @@ SCENARIOS_DIR = ROOT / "scenarios"
 OUT = ROOT / "SCENARIOS.md"
 
 INTROS = {
-    "tool_calling":    "Probes the **canonical happy path**: a single declared tool, a direct prompt, an expected call with subset args. Includes multi-tool dispatch, enum constraints, negation, i18n, numeric edges, and the two refusals the engine hard-codes (calendar / multi-room).",
-    "extraction":      "Uses **one declared schema = one tool** as a parser. Each row is a free-text passage (e.g. \"Invoice from Acme Corp, $1,200.00…\") and we expect the engine to emit the schema-bound call carrying the parsed fields.",
-    "off_topic":       "Guarantees the **refusal contract**: when the prompt cannot be served by the declared tools, the engine must return `function_calls: []`. Some rows deliberately bundle math / translate / weather / jokes.",
-    "qualitative":     "Same engine, **colloquial phrasing**: please / would-you-mind / \"yo\" / prose numbers / implicit rooms. Some pass via the broader schema descriptions added during the accuracy work; the rest stay as `any` where the engine refuses the phrasing.",
-    "edge_cases":      "**Stress around the edges**: empty / very long / unicode / emoji / spelling / numerics-as-words / quoting / mixed casing / code-switch.",
-    "conversational":  "Two-turn exchanges to confirm the session keeps tool schemas loaded after a `complete()` and that follow-ups re-target the right tool.",
-    "system_facts":    "Sends a `system:` turn with `date:`, `device:`, `location:` facts and checks whether the engine binds them to the call. Several rows document the engine's refusal to handle calendar / location intents (see CAPABILITIES.md).",
-    "stress":          "6-tool catalogue so the **retrieval head** engages (per the README, above five tools invokes retrieval and renders only the top-5). Verifies the engine still picks the right tool when the catalogue is wider than the schema.",
+    "tool_calling":    "考察**最常见路径**：声明一个工具、给出一句直接提示、期待引擎返回一次结构化的 `call`。覆盖多工具联合调用、枚举约束、否定语义、跨语言提示、边界数值，以及引擎硬编码的两种拒绝意图（calendar / multi-room）。",
+    "extraction":      "把**一个 schema 当作抽取器**使用：每条都是一段自由文本（例如\"Invoice from Acme Corp, $1,200.00…\"），期待引擎吐出 schema 限定的 `call` 并把解析得到的字段填进 `arguments`。",
+    "off_topic":       "守护**拒绝契约**：当提示无法被任何已声明工具服务时，引擎应当返回 `function_calls: []`。这一类有意把数学 / 翻译 / 天气 / 笑话 等无关请求塞进来观察引擎的边界。",
+    "qualitative":     "同样的引擎，输入换成**口语化表达**：please / would-you-mind / \"yo\" / 数字写成英文 / 省略主语等。一部分靠扩写工具描述得以通过；剩下的被引擎拒绝时直接落到 `any` 形态。",
+    "edge_cases":      "**对各种边界情况进行压测**：空串、超长、Unicode、Emoji、拼写错误、数字写成英文、引号、混合大小写、中英混输。",
+    "conversational":  "两轮会话，确认第二次 `complete()` 时工具 schema 仍然加载，并且后续回合能命中正确的工具。",
+    "system_facts":    "向引擎注入 `system:` 回合，携带 `date:` / `device:` / `location:` 等事实，看引擎是否把它们绑定到调用上。其中若干行专门记录引擎对 calendar / 位置类意图的整体拒绝（详见 CAPABILITIES.md）。",
+    "stress":          "声明 6 个工具以触发**检索头**（README 提到，超过 5 个工具时引擎只会挑出 top‑5 注入上下文）。验证当目录远大于 schema 时引擎仍然能选中正确工具。",
 }
 
 
 def render_category(path: pathlib.Path) -> str:
     cat = path.stem
     rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
-    out = [f"## {cat} — {len(rows)} scenarios", "", INTROS.get(cat, ""), "", "### Scenarios", ""]
+    out = [f"## {cat} — {len(rows)} 条场景", "", INTROS.get(cat, ""), "", "### 场景列表", ""]
     for r in rows:
-        head = f"#### `{r['id']}` · severity=`{r['severity']}`"
-        out.append(head); out.append("")
+        out.append(f"#### `{r['id']}` · 严重度=`{r['severity']}`")
+        out.append("")
         tools = r.get('tools') or []
         if tools:
             names = ", ".join(f"`{t.get('name','?')}`" for t in tools)
-            out.append(f"- **Tools declared**: {names}  ")
-        out.append(f"- **Prompt**: `{r['prompt']}`  ")
+            out.append(f"- **声明的工具**：{names}  ")
+        out.append(f"- **用户提示**：`{r['prompt']}`  ")
         sys = r.get('system')
         if sys:
             sysshort = sys if len(sys) <= 100 else sys[:97] + "…"
-            out.append(f"- **System turn**: `{sysshort}`  ")
+            out.append(f"- **system 回合**：`{sysshort}`  ")
         exp = r.get('expect') or {}
         kind = exp.get('kind', 'any')
         if kind == 'call':
             extras = []
-            if exp.get('name'): extras.append(f"name=`{exp['name']}`")
-            if exp.get('args'): extras.append(f"args=`{json.dumps(exp['args'], ensure_ascii=False)}`")
-            if 'min_confidence' in exp: extras.append(f"min_confidence=`{exp['min_confidence']}`")
-            if 'max_peak_ram_mb' in exp: extras.append(f"max_peak_ram_mb=`{exp['max_peak_ram_mb']}`")
-            out.append(f"- **Expect**: a single `call` matching {', '.join(extras) or 'by name only'}.  ")
+            if exp.get('name'): extras.append(f"工具名=`{exp['name']}`")
+            if exp.get('args'): extras.append(f"参数=`{json.dumps(exp['args'], ensure_ascii=False)}`")
+            if 'min_confidence' in exp: extras.append(f"最低置信度=`{exp['min_confidence']}`")
+            if 'max_peak_ram_mb' in exp: extras.append(f"最大峰值内存=`{exp['max_peak_ram_mb']} MB`")
+            out.append(f"- **期待结果**：一条 `call`，匹配 {', '.join(extras) or '按工具名匹配'}。  ")
         elif kind == 'empty':
-            out.append("- **Expect**: the `function_calls` array must be `[]` — i.e. a refusal.  ")
+            out.append("- **期待结果**：`function_calls` 必须是 `[]`，即引擎要拒绝调用。  ")
         elif kind == 'respond':
-            out.append("- **Expect**: a text `respond` envelope (no function calls).  ")
+            out.append("- **期待结果**：一条 `respond` 文本回包（没有任何 `function_calls`）。  ")
         else:
-            out.append("- **Expect**: any well-formed engine output (used for `known_ceiling` prompts).  ")
+            out.append("- **期待结果**：任意良构的引擎输出（专门留给 `known_ceiling` 场景）。  ")
         fu = exp.get('followup')
         if fu:
             fexp = (fu.get('expect') or {}).get('kind', 'any')
-            out.append(f"- **Followup turn**: `{fu['prompt']}` with expect=`{fexp}`  ")
+            out.append(f"- **追问回合**：`{fu['prompt']}`，期待 `expect={fexp}`。  ")
         tags = r.get('tags') or []
         if tags:
-            out.append(f"- **Tags**: {', '.join('`'+t+'`' for t in tags)}  ")
+            out.append(f"- **标签**：{', '.join('`'+t+'`' for t in tags)}  ")
         note = r.get('note')
         if note:
-            out.append(f"- **Note**: {note}  ")
+            out.append(f"- **备注**：{note}  ")
         out.append("")
     return "\n".join(out)
 
 
-def main() -> None:
-    header = """# Needle 2 场景测试详解 (Scenarios Reference)
+HEADER = """# Needle 2 场景测试详解
 
-This document is the **scenario reader**: it walks through every row of
-`scenarios/*.jsonl`, explaining **what is being probed**, **what the
-engine is expected to emit**, and **why each row exists**.  It pairs with
-`CAPABILITIES.md` (what the engine refuses outright) and `README.md` (how
-to add new rows).
+本文档是 `scenarios/*.jsonl` 的**场景导读**：逐条说明**考察了什么**、**期待引擎返回什么**、**为什么需要这条用例**。它和 `CAPABILITIES.md`（记录引擎硬性拒绝的边界）、`README.md`（介绍整套体系）互为补充。
 
-* **82 scenarios** across **8 categories**
-* Each row is **declarative** JSONL — no Python in the corpus, easy to
-  diff against the schema in `eval/needle_eval/models.py`.
-* Two runners exercise every row: **CLI** (`bin/macos-arm64/needle`) and
-  **Python** (`needle.Needle`).  Both currently finish at **82 / 82 = 100 %**.
+* **82 条场景**，分布于 **8 个类别**
+* 每条都是**纯声明式 JSONL** —— 没有 Python 代码，方便与 `eval/needle_eval/models.py` 对照
+* **两个 runner** 都会跑：`CLI`（`bin/macos-arm64/needle`）和 `Python`（`needle.Needle`），当前都跑出 **82 / 82 = 100 %**
 
-## How to read this document
+> JSONL 字段名（`Prompt` / `Tools` / `Expect` …）保持英文原文，方便和模型源码比对；本文叙述为中文。
 
-For each scenario:
+## 怎么读这份文档
 
-* **Prompt** is the literal user message sent to the engine.
-* **System turn** (when present) is the optional system turn with facts
-  like `date:`, `locale:`, `device:`.
-* **Tools declared** is the JSON-schema array passed to the engine for
-  this prompt.
-* **Expect** is the shape we count as a pass:
-  `call <name> {args}` / `empty` / `respond` / `any`.
-  `any` is used only for `known_ceiling` rows where the engine refuses
-  the intent regardless of schema.
-* **Tags** are free-form markers (`i18n`, `light`, `multi`, ...).
-  `known_ceiling` rows always come with a `Note:` explaining why.
-* **Followup turn** (when present) is a second turn appended to the
-  session, exercising multi-turn behaviour.
+每条场景都包含下列字段：
 
-## Scoring recap
+- **用户提示（Prompt）**：发送给引擎的用户原文。
+- **system 回合**（可选）：额外的系统提示，常见字段是 `date:` / `locale:` / `device:`。
+- **声明的工具**：在该提示下传递给引擎的 JSON Schema 数组。
+- **期待结果（Expect）**：通过该场景的输出形状，可能性有：
+  - `call <name> {args}` —— 一条结构化调用
+  - `empty` —— 调用数组为 `[]`，即引擎拒答
+  - `respond` —— 文本回包（没有调用）
+  - `any` —— 任意形状，只对 `known_ceiling` 场景使用
+- **追问回合**（可选）：在场景结束后再追加一轮，专门验证多轮行为。
+- **标签**：自由标记，便于检索；带 `known_ceiling` 的场景一定有 **备注** 说明原因。
 
-The harness computes a `Result` per row:
+## 评分规则回顾
 
-* `passed` is true iff the engine output matches `expect.kind`,
-  subset-matches `expect.args`, has `confidence ≥ expect.min_confidence`,
-  and stays under `expect.max_peak_ram_mb` (default 64 MB).
-* `score` is the engine's reported `confidence`, capped at half on failure.
-* `aggregate` produces a `{total, passed, score, by_category}` roll-up,
-  which gets rendered into `reports/{cli,python}.md`.
+每条记录产出一个 `Result`：
 
-To regenerate this doc after editing scenarios:
+- `passed` 为真需要同时满足：输出形状匹配 `expect.kind`、`expect.args`（子集匹配）、`confidence ≥ expect.min_confidence`、`peak_ram_mb ≤ expect.max_peak_ram_mb`（默认 64 MB）。
+- `score` 取引擎返回的 `confidence`，失败时取一半。
+- `aggregate` 汇总成 `{total, passed, score, by_category}`，落到 `reports/{cli,python}.md`。
+
+重新生成该文档：
 
 ```bash
 python scripts/build_scenarios_doc.py
 ```
 
-## Severity legend
+## 严重度图例
 
-| severity | what it means | when to flag |
+| 严重度 | 含义 | 如何处置 |
 | --- | --- | --- |
-| `smoke` | must pass on every engine release | red CI |
-| `regression` | a previously-broken path that we now keep green | red CI |
-| `edge` | known difficulty; tagged `known_ceiling` if engine refuses outright | informational only |
+| `smoke` | 任何引擎发布都必须通过 | CI 红了立刻修 |
+| `regression` | 曾经坏过的路径，现在保持绿 | CI 红了立刻修 |
+| `edge` | 已知困难题；若引擎硬拒则附 `known_ceiling` 标签 | 仅作信息参考 |
 
-## Categories at a glance
+## 类别一览
 
-| category | count | what it stresses |
+| 类别 | 条数 | 考察点 |
 | --- | --- | --- |
-| `tool_calling`  | 22 | canonical calls, multi-tool, negation, i18n, numeric edges |
-| `extraction`    | 12 | one-tool-as-parser, free-form → JSON call |
-| `off_topic`     |  9 | refusal contract (`function_calls: []`) |
-| `qualitative`   |  9 | colloquial, polite, "yo", implicit subjects |
-| `edge_cases`    | 14 | empty / long / unicode / emoji / typo / code-switch |
-| `conversational`|  5 | multi-turn — schema survives a second `complete()` |
-| `system_facts`  |  7 | `system:` turn carrying `date:` / `device:` / `location:` |
-| `stress`        |  4 | 6-tool catalogue so the retrieval head engages |
+| `tool_calling`  | 22 | 经典调用、多工具、否定、跨语言、边缘数值 |
+| `extraction`    | 12 | 一工具 = 一抽取器，自由文本 → 结构化 JSON 调用 |
+| `off_topic`     |  9 | 拒答契约（`function_calls: []`） |
+| `qualitative`   |  9 | 礼貌、随意、"yo"、省略主语 |
+| `edge_cases`    | 14 | 空 / 超长 / Unicode / Emoji / 拼写错误 / 中英混输 |
+| `conversational`|  5 | 多轮：第二次 `complete()` 时 schema 还在 |
+| `system_facts`  |  7 | `system:` 回合携带 `date:` / `device:` / `location:` |
+| `stress`        |  4 | 6 工具目录触发检索头 |
 
 ---
 
 """
+
+
+def main() -> None:
     order = ["tool_calling", "extraction", "off_topic", "qualitative",
-            "edge_cases", "conversational", "system_facts", "stress"]
+             "edge_cases", "conversational", "system_facts", "stress"]
     paths = {p.stem: p for p in SCENARIOS_DIR.glob("*.jsonl")}
     body = "\n".join(render_category(paths[k]) for k in order if k in paths)
-    OUT.write_text(header + body + "\n")
+    OUT.write_text(HEADER + body + "\n")
     print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size} bytes)")
 
 
