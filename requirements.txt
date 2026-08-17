@@ -1,0 +1,8 @@
+# Runtime minimal set: cactus-needle's lazy deps that aren't auto-installed on every Python.
+cactus-needle==2.0.2
+huggingface_hub
+httpx
+tqdm
+pydantic
+# Test
+pytest

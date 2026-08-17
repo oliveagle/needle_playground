@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Build / native artifacts (downloadable)
+# Keep bin/macos-arm64 in git? It's not strictly source - decide.
+# We'll keep bin/ once generated so fresh clones don't redownload.
+# But ignore the empty parent dir, and ignore the unpacked vendor extracts.
+
+# Eval reports (generated)
+reports/*.json
+reports/*.md
+
+# Vendor wheels (downloadable, but cached locally for offline re-build)
+!vendor/*.whl
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,16 @@
+[
+  {
+    "name": "receipt",
+    "description": "A purchase receipt shared as text",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "merchant": { "type": "string" },
+        "total": { "type": "number" },
+        "currency": { "type": "string" },
+        "line_items": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["merchant", "total"]
+    }
+  }
+]

@@ -1,0 +1,4 @@
+# Toolchain markers - keep line endings consistent across OSes.
+* text=auto eol=lf
+*.jsonl text eol=lf
+*.md text eol=lf
