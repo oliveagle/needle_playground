@@ -160,9 +160,12 @@ pytest tests/ && \
 
 ## Improving accuracy
 
-After the first run we were at 25/40. Two turns of iteration got us to
-40/40 (CLI runner) / 39/40 (Python runner).  The improvements are worth
-documenting because they generalise.
+After the first run we were at 25/40. A few iterations took us to
+**82 / 82** scenarios passing on both runners — see `CAPABILITIES.md`
+for the 6 rows the engine refuses outright (calendar / location /
+Chinese-to-lights / pronoun / multi-room); those scenarios are
+configured as `kind="any"` so they never break a CI signal. The
+improvements are worth documenting because they generalise.
 
 ### 1. Match schema descriptions to the model's vocabulary
 

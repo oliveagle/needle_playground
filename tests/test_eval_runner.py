@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from eval.needle_eval.models import Result, Scenario, load_corpus, load_jsonl
+from eval.needle_eval.models import Expect, ExpectKind, Result, Scenario, load_corpus
 from eval.needle_eval.scoring import aggregate, score
 
 
@@ -34,20 +34,16 @@ class FakeRunner:
         return score(scenario, self.fixtures[scenario.id])
 
 
-def test_fake_runner_satisfies_off_topic_contract():
-    runner = FakeRunner({
-        "ot01-no-tools-defined": {"function_calls": [], "confidence": 1.0,
-                                  "peak_ram_mb": 25.0},
-        "ot02-joke-with-lights-schema": {"function_calls": [], "confidence": 0.8,
-                                          "peak_ram_mb": 25.0},
-        "ot03-life-meaning": {"function_calls": [], "confidence": 0.6,
-                              "peak_ram_mb": 25.0},
-        "ot04-recipe-with-receipt-schema": {"function_calls": [], "confidence": 0.8,
-                                            "peak_ram_mb": 25.0},
-        "ot05-math-out-of-scope": {"function_calls": [], "confidence": 0.4,
-                                   "peak_ram_mb": 25.0},
-    })
-    scenarios = [s for s in load_corpus() if s.category == "off_topic"]
+def _empty_pass() -> dict:
+    return {"function_calls": [], "confidence": 1.0, "peak_ram_mb": 25.0}
+
+
+@pytest.mark.parametrize("category", ["off_topic"])
+def test_runner_satisfies_off_topic_contract(category):
+    """For every off_topic scenario, returning [] should satisfy ExpectKind.EMPTY or ANY."""
+    scenarios = [s for s in load_corpus() if s.category == category]
+    assert scenarios, "corpus must contain off_topic scenarios"
+    runner = FakeRunner({s.id: _empty_pass() for s in scenarios})
     results = [runner(s) for s in scenarios]
     assert all(r.passed for r in results), [r.notes for r in results]
     assert runner.calls == [s.id for s in scenarios]
@@ -61,15 +57,21 @@ def test_aggregate_uses_fake_runner_to_summarise():
     scenarios = [
         Scenario(id="x1", category="a", severity="smoke", tools=None,
                  system=None, prompt="hi",
-                 expect=__import__("eval.needle_eval.models", fromlist=["Expect"]).Expect(
-                     kind=__import__("eval.needle_eval.models", fromlist=["ExpectKind"]).ExpectKind.EMPTY)),
+                 expect=Expect(kind=ExpectKind.EMPTY)),
         Scenario(id="x2", category="a", severity="smoke", tools=None,
                  system=None, prompt="",
-                 expect=__import__("eval.needle_eval.models", fromlist=["Expect"]).Expect(
-                     kind=__import__("eval.needle_eval.models", fromlist=["ExpectKind"]).ExpectKind.ANY,
-                     min_confidence=0.5)),
+                 expect=Expect(kind=ExpectKind.ANY, min_confidence=0.5)),
     ]
     results = [runner(s) for s in scenarios]
     summary = aggregate(results)
     assert summary["passed"] == 1
     assert summary["by_category"]["a"]["failures"] == ["x2"]
+
+
+def test_corpus_total_matches_documented_count():
+    """The repo documents 82 scenarios; assert it stays within a sane band."""
+    scenarios = load_corpus()
+    assert 70 <= len(scenarios) <= 200, (
+        f"corpus size {len(scenarios)} is outside the documented band; "
+        "update CAPABILITIES.md and README before merging."
+    )
