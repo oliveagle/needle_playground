@@ -100,3 +100,31 @@ locally or refuse with a static Chinese-language fallback message.
 
 The needle 2 engine is unlikely to lift this ceiling without a new training
 cycle that includes a larger CJK corpus for room/device vocabulary.
+
+
+## Is Needle 2 a Chinese-language model?
+
+No. The README and the binary both say otherwise:
+
+* The tokenizer table stored inside `libneedle.dylib` includes the strings
+  `English` and `Chinese` (visible via `strings(1)`), so it has *some*
+  bilingual coverage. But that vocabulary is statistical — it does not
+  mean the model was **trained** for the CJK case.
+
+* Empirical test on `scenarios_zh/` (27 prompts):
+  - 40.7 % pass overall (vs. 82/82 = 100 % on the English `scenarios/`)
+  - 6/10 Chinese room/light prompts trigger an English-language refusal
+    template that's *unrelated to the prompt*: "No tool available for
+    fitness tracking or health data", "No tool available to check weather",
+    "No tool available for location-based search".
+
+* The patterns that **do** survive CJK input are narrow:
+  - numeric extraction (`总共是 99 元` → `value: 99`)
+  - bare email / tracking-id extraction
+  - off-topic refusals (the refusal template is language-agnostic)
+  - short English-mixed prompts (`"调暗 living room 到 30"`)
+
+So the model is best described as **an English-first on-device model with
+partial bilingual tokenisation**. For Chinese users, run a translation
+wrapper in front of Needle, *or* call `scripts/zh_pass_rate.py` to see
+which prompts survive without translation.
